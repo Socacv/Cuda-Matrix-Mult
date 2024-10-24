@@ -2,5 +2,5 @@
 ## About
 This is an example of matrix multiplication implemented in cuda with double pointers
 ## Usage
-To use it compile it with nvcc and then run it by specifing the number of rows and columns (it only support square matrix so just one number)
-and see the results, if not specified the default will be 32x32
+To use it compile it with nvcc and then run it, to modify the matrices length just modify the mat1 and mat2 
+creation code. I still didnt stress test to see if the results are correct with high values.
