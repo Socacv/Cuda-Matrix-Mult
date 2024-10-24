@@ -17,8 +17,8 @@ __global__ void matMul(double **first, double **second, double **third, const in
     }
 }
 __global__ void transpose(double **matrix, double **result, const int n){
-    int threadx = threadIdx.x + blockIdx.x * blockDim.x;
-    int thready = threadIdx.y + blockIdx.y * blockDim.y;
+    int threadx = threadIdx.x + (blockIdx.x * blockDim.x);
+    int thready = threadIdx.y + (blockIdx.y * blockDim.y);
 
     if(threadx < n && thready < n){
         result[threadx][thready] = matrix[thready][threadx];
@@ -44,7 +44,7 @@ void printMat(double **matrix, const int n){
     }
 }
 int main(){
-    const int matrixsize = 32;
+    const int matrixsize = 64;
     double **mat1;
     double **mat2;
     double **mat2T;
@@ -70,7 +70,7 @@ int main(){
     initMatrix(mat1, matrixsize);
     initMatrix(mat2, matrixsize);
     dim3 threads = {32,32};
-    dim3 blocks  = {threads.x / matrixsize,threads.y / matrixsize};
+    dim3 blocks  = {matrixsize / threads.x,matrixsize / threads.y};
     fprintf(stdout, "\033[1;31mFirst Matrix : \033[0m\n");
     printMat(mat1, matrixsize);
     fprintf(stdout, "\033[1;31mSecond Matrix : \033[0m\n");
