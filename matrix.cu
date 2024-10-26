@@ -1,6 +1,8 @@
 #include "matrix.h"
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <unistd.h>
 __device__ double dotProduct(double* first, double* second, const int m){
@@ -10,166 +12,105 @@ __device__ double dotProduct(double* first, double* second, const int m){
     }
     return result;
 }
-__global__ void matMul(double **first, double **second, double **third, const int n, const int m, const int lcom){
+__global__ void matMul(Matrix *first, Matrix *second, Matrix *third, const int lcom){
     int threadx = threadIdx.x + blockIdx.x * blockDim.x;
     int thready = threadIdx.y + blockIdx.y * blockDim.y;
-    if(threadx < n && thready < m){
-        third[threadx][thready] = dotProduct(first[threadx],second[thready], lcom);
+    if(threadx < third->n && thready < third->m){
+        (*third->atG(threadx, thready)) = dotProduct(first->getRowG(threadx),second->getRowTG(thready), lcom);
     }
 }
-__global__ void transpose(double **matrix, double **result, const int n, const int m){
+__global__ void transpose(Matrix* matrix){
     int threadx = threadIdx.x + (blockIdx.x * blockDim.x);
     int thready = threadIdx.y + (blockIdx.y * blockDim.y);
 
-    if(threadx < n && thready < m){
-        result[thready][threadx] = matrix[threadx][thready];
-    }
-}
-__global__ void allocateongpu(double **matrix, const int n, const int m){
-    int threadid = threadIdx.x + blockIdx.x * blockDim.x;
-    if(threadid < n){
-        matrix[threadid] = (double*) malloc(m * sizeof(double));
-    }
-}
-__global__ void freeongpu(double **matrix, const int n){
-    int threadid = threadIdx.x + blockIdx.x * blockDim.x;
-    if (threadid < n) {
-        free(matrix[threadid]);
-    }
-}
-__global__ void copyVectorMtV(double **matrix, double *vector, const int row, const int m){
-    int threadid = threadIdx.x + blockIdx.x * blockDim.x;
-    if(threadid < m){
-        vector[threadid] = matrix[row][threadid];
-    }
-}
-__global__ void copyVectorVtM(double **matrix, double *vector, const int row, const int m){
-    int threadid = threadIdx.x + blockIdx.x * blockDim.x;
-    if(threadid < m){
-        matrix[row][threadid] = vector[threadid];
+    if(threadx < matrix->n && thready < matrix->m){
+        (*matrix->atTG(threadx, thready)) = (*matrix->atG(threadx, thready));
     }
 }
 
 double randomdouble(){
     return static_cast<double>(rand()) / static_cast<double>(rand());
 }
-void initMatrix(double ** matrix, const int n, const int m){
+Matrix::Matrix(const int n, const int m){
+    cudaMalloc(&this->matrixG, n*m*sizeof(double));
+    cudaMalloc(&this->matrixTG,n*m*sizeof(double));
+    this->matrixC = (double*) malloc( n*m*sizeof(double));
+    this->n = n;
+    this->m = m;
+    cudaMalloc(&matongpu,sizeof(Matrix));
+    cudaMemcpy(this->matongpu, this, sizeof(Matrix), cudaMemcpyHostToDevice);
+}
+
+Matrix::~Matrix(){
+    cudaFree(this->matrixG);
+    cudaFree(this->matrixTG);
+    cudaFree(this->matongpu);
+    free(this->matrixC);
+}
+
+void Matrix::init(){
     for(int i = 0; i < n; i++){
         for (int j = 0; j < m; j++) {
-            matrix[i][j] = randomdouble();
+            *this->at(i, j) = randomdouble();
         }
     }
+    cudaMemcpy(this->getMatrixOnGPU(), this->getMatrixOnCPU(), this->n*this->m*sizeof(double), cudaMemcpyHostToDevice);
+    this->transposed();
 }
-void printMat(double **matrix, const int n, const int m){
+
+void Matrix::print(){
     fprintf(stdout, "\033[1;31mMatrix:\n");
     for(int i = 0; i < n ; i++){
         fprintf(stdout, "\033[0;32m{ \033[0m");
         for (int j = 0; j < m; j++) {
-            fprintf(stdout, "%f, ", matrix[i][j]);
+            fprintf(stdout, "%f, ", *this->at(i, j));
         }
         fprintf(stdout, "\033[0;32m}\n\033[0m");
     }
 }
-void allocMatGPU(double **&matrix, const int n,const int m){
-    cudaMalloc(&matrix,n*sizeof(double*));
-    dim3 threads = {32};
-    dim3 blocks  = {n / threads.x +1};
-    allocateongpu<<<blocks,threads>>>(matrix, n, m);
-    cudaDeviceSynchronize();
-}
-void allocMatCPU(double **&matrix, const int n, const int m){
-    matrix = (double**) malloc(n*sizeof(double*));
-    for (int i = 0; i<n; i++) {
-        matrix[i] = (double*) malloc(m*sizeof(double));
-    }
-}
-void freeMatGPU(double **&matrix, const int n){
-    dim3 threads = {32};
-    dim3 blocks  = {n / threads.x +1};
-    freeongpu<<<blocks,threads>>>(matrix, n);
-    cudaDeviceSynchronize();
-    cudaFree(matrix);    
-}
-void freeMatCPU(double **&matrix, const int n){
-    for (int i = 0; i<n; i++) {
-        free(matrix[i]);
-    }
-    free(matrix);    
-}
-void copyMatCPUtoGPU(double **&cpu, double **&gpu, const int n, const int m){
-    dim3 threads = {32};
-    dim3 blocks  = {n / threads.x +1};
-    for(int i = 0; i < n; i++){
-        double* temp;
-        cudaMalloc(&temp,m*sizeof(double));
-        cudaMemcpy(temp, cpu[i], m*sizeof(double), cudaMemcpyHostToDevice);
-        copyVectorVtM<<<blocks,threads>>>(gpu, temp, i, m);
-        cudaDeviceSynchronize();
-        cudaFree(temp);
-    }
-}
-void copyMatGPUtoCPU(double **&gpu, double **&cpu, const int n, const int m){
-    dim3 threads = {32};
-    dim3 blocks  = {n / threads.x + 1};
-    for(int i = 0; i < n; i++){
-        double *temp;
-        cudaMalloc(&temp,m*sizeof(double));
-        copyVectorMtV<<<blocks,threads>>>(gpu, temp, i, m);
-        cudaDeviceSynchronize();
-        cudaMemcpy(cpu[i], temp, m*sizeof(double), cudaMemcpyDeviceToHost);
-        cudaFree(temp);
-    }
-}
-
-Matrix::Matrix(const int n, const int m){
-    allocMatCPU(this->matrixC, n, m);
-    allocMatGPU(this->matrixG, n, m);
-    allocMatGPU(this->matrixTG, m, n);
-    this->n = n;
-    this->m = m;
-}
-
-Matrix::~Matrix(){
-    freeMatGPU(this->matrixG, this->n);
-    freeMatGPU(this->matrixTG, this->m);
-    freeMatCPU(this->matrixC, this->n);
-}
-
-void Matrix::init(){
-    initMatrix(this->matrixC, this->n, this->m);
-    copyMatCPUtoGPU(this->matrixC, this->matrixG, this->n, this->m);
-    this->transposed();
-
-}
-
-void Matrix::print(){
-    printMat(this->matrixC, this->n, this->m);
-}
 
 void Matrix::sync(){
-    copyMatGPUtoCPU(this->matrixG, this->matrixC, this->n, this->m);
+    cudaMemcpy(this->getMatrixOnCPU(), this->getMatrixOnGPU(), this->n*this->m*sizeof(double), cudaMemcpyDeviceToHost);
 }
 void Matrix::transposed(){
     dim3 threads = {nThreads,nThreads};
     dim3 blocks  = {this->n / nThreads +1,this->m /nThreads +1};
-    transpose<<<blocks, threads>>>(this->matrixG, this->matrixTG, this->n, this->m);
+    transpose<<<blocks, threads>>>(this->matongpu);
+    cudaDeviceSynchronize();
 }
-
-double** Matrix::getTransposed(){
+double* Matrix::at(uint32_t n, uint32_t m){
+    return (this->matrixC + m) + (n*this->m);
+}
+double* Matrix::getRow(uint32_t n){
+    return this->matrixC + (n*this->m);
+}
+__device__ double* Matrix::atG(uint32_t n, uint32_t m){
+    return (this->matrixG + m) + (n*this->m);
+}
+__device__ double* Matrix::getRowG(uint32_t n){
+    return this->matrixG + (n*this->m);
+}
+__device__ double* Matrix::atTG(uint32_t n, uint32_t m){
+    return (this->matrixTG + n) + (m*this->n);
+}
+__device__ double* Matrix::getRowTG(uint32_t n){
+    return this->matrixTG + (n*this->m);
+}
+double* Matrix::getTransposed(){
     return this->matrixTG;
 }
-double** Matrix::getMatrixOnGPU(){
+double* Matrix::getMatrixOnGPU(){
     return this->matrixG;
 }
-double** Matrix::getMatrixOnCPU(){
+double* Matrix::getMatrixOnCPU(){
     return this->matrixC;
 }
 Matrix* multiplyMatrix(Matrix *mat1, Matrix *mat2){
     if(mat1->m == mat2->n){
-        Matrix * result = new Matrix(mat1->n,mat2->m);
+        Matrix *result = new Matrix(mat1->n,mat2->m);
         dim3 threads = {nThreads,nThreads};
-        dim3 blocks  = {(unsigned)result->n / nThreads +1,(unsigned)result->m/nThreads +1};
-        matMul<<<blocks,threads>>>(mat1->getMatrixOnGPU(), mat2->getTransposed(), result->getMatrixOnGPU(), result->n, result->m, mat1->m);
+        dim3 blocks  = {result->n / nThreads +1,result->m /nThreads +1};
+        matMul<<<blocks,threads>>>(mat1->matongpu,mat2->matongpu,result->matongpu,mat1->m);
         cudaDeviceSynchronize();
         result->sync();
         return result;

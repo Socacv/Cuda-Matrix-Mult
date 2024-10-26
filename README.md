@@ -1,6 +1,6 @@
 # Cuda Matrix Multiplication
 ## About
-This is an example of matrix multiplication implemented in cuda with double pointers
+This is an example of matrix multiplication implemented in cuda
 ## Usage
 To use it compile it with nvcc and then run it, to modify the matrices length just modify the mat1 and mat2 
 creation code. I still didn't stress test to see if the results are correct with big values.

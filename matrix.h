@@ -1,19 +1,11 @@
-
-__global__ void matMul(double **first, double **second, double **third, const int n, const int m, const int lcom);
-__global__ void transpose(double **matrix, double **result, const int n, const int m);
-__global__ void allocateongpu(double **matrix, const int n, const int m);
-__global__ void freeongpu(double **matrix, const int n);
-__global__ void copyVectorMtV(double **matrix, double *vector, const int row, const int m);
-__global__ void copyVectorVtM(double **matrix, double *vector, const int row, const int m);
+#include <cstdint>
+__global__ void matMul(const double *first, const double *second, double **third, const int n, const int m, const int lcom);
+__global__ void transpose(const double *matrix, double *result, const int n, const int m);
+__global__ void copyVectorMtV(double *matrix, double *vector, const int row, const int m);
+__global__ void copyVectorVtM(double *matrix, double *vector, const int row, const int m);
 double randomdouble();
-void initMatrix(double ** matrix, const int n, const int m);
-void printMat(double **matrix, const int n, const int m);
-void allocMatGPU(double **&matrix, const int n,const int m);
-void allocMatCPU(double **&matrix, const int n, const int m);
-void freeMatGPU(double **&matrix, const int n);
-void freeMatCPU(double **&matrix, const int n);
-void copyMatCPUtoGPU(double **&cpu, double **&gpu, const int n, const int m);
-void copyMatGPUtoCPU(double **&gpu, double **&cpu, const int n, const int m);
+void initMatrix(double *matrix, const int n, const int m);
+void printMat(double *matrix, const int n, const int m);
 const int nThreads = 32;
 class Matrix {
 public:
@@ -24,13 +16,20 @@ public:
     void print();
     void sync();
     void transposed();
-    double** getTransposed();
-    double** getMatrixOnGPU();
-    double** getMatrixOnCPU();
+    double* at(uint32_t n, uint32_t m);
+    double* getRow(uint32_t n);
+    __device__ double* atG(uint32_t n, uint32_t m);
+    __device__ double* getRowG(uint32_t n);
+    __device__ double* atTG(uint32_t n, uint32_t m);
+    __device__ double* getRowTG(uint32_t n);
+    double* getTransposed();
+    double* getMatrixOnGPU();
+    double* getMatrixOnCPU();
     unsigned int n = 32, m = 32;
-    double** matrixC;
-    double** matrixG;
-    double** matrixTG;
+    double* matrixC;
+    double* matrixG;
+    double* matrixTG;
+    Matrix* matongpu;
 };
 
 Matrix* multiplyMatrix(Matrix *mat1, Matrix *mat2);

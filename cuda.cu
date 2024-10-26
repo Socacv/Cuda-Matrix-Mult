@@ -1,4 +1,3 @@
-#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -6,8 +5,8 @@
 #include <unistd.h>
 
 int main(int argc, char* argv[]){
-    Matrix* mat1 = new Matrix(1,4000);
-    Matrix* mat2 = new Matrix(4000,1);
+    Matrix* mat1 = new Matrix(1,400);
+    Matrix* mat2 = new Matrix(400,1);
     mat1->init();
     mat2->init();
     mat1->print();
